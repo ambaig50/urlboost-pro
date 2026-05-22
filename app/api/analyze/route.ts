@@ -1,55 +1,174 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
-export async function POST(req: NextRequest) {
-  const { url } = await req.json();
+interface SeoIssue {
+  type: 'good' | 'warning' | 'critical';
+  message: string;
+  fix: string;
+}
+
+interface SeoResult {
+  url: string;
+  title: string;
+  score: number;
+  metaDesc: string;
+  h1Count: number;
+  h2Count: number;
+  missingAlt: number;
+  hasSchema: boolean;
+  hasViewport: boolean;
+  hasCanonical: boolean;
+  hasOpenGraph: boolean;
+  issues: SeoIssue[];
+  timestamp: string;
+}
+
+export async function POST(req: NextRequest): Promise<NextResponse> {
+  let body: { url?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 });
+  }
+
+  const { url } = body;
+
+  if (!url || typeof url !== 'string') {
+    return NextResponse.json({ error: 'URL is required.' }, { status: 400 });
+  }
+
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(url);
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      throw new Error('Invalid protocol');
+    }
+  } catch {
+    return NextResponse.json({ error: 'Please enter a valid URL starting with http:// or https://' }, { status: 400 });
+  }
 
   try {
-    const response = await fetch(url, {
-      headers: { 'User-Agent': 'URLBoostPro/1.0' },
-      cache: 'no-store'
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    const response = await fetch(parsedUrl.toString(), {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; URLBoostPro/1.0; +https://urlboostpro.com)',
+        'Accept': 'text/html,application/xhtml+xml',
+      },
+      cache: 'no-store',
+      signal: controller.signal,
     });
 
-    if (!response.ok) throw new Error('Failed to fetch');
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      return NextResponse.json(
+        { error: `Website returned ${response.status} ${response.statusText}.` },
+        { status: 400 }
+      );
+    }
+
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('text/html')) {
+      return NextResponse.json({ error: 'URL does not appear to be an HTML page.' }, { status: 400 });
+    }
 
     const html = await response.text();
 
-    // Enhanced SEO Analysis
-    const title = html.match(/<title>(.*?)<\/title>/i)?.[1]?.trim() || '';
-    const metaDesc = html.match(/<meta[^>]*name=["']description["'][^>]*content=["'](.*?)["']/i)?.[1] || '';
-    const h1 = (html.match(/<h1/gi) || []).length;
-    const h2 = (html.match(/<h2/gi) || []).length;
-    const images = html.match(/<img[^>]*>/gi) || [];
+    // --- Extraction ---
+    const title = html.match(/<title[^>]*>(.*?)<\/title>/is)?.[1]?.trim().replace(/\s+/g, ' ') ?? '';
+    const metaDesc = html.match(/<meta[^>]*name=["']description["'][^>]*content=["'](.*?)["']/i)?.[1]
+      ?? html.match(/<meta[^>]*content=["'](.*?)["'][^>]*name=["']description["']/i)?.[1]
+      ?? '';
+    const h1Count = (html.match(/<h1[\s>]/gi) ?? []).length;
+    const h2Count = (html.match(/<h2[\s>]/gi) ?? []).length;
+    const images = html.match(/<img[^>]*>/gi) ?? [];
     const missingAlt = images.filter(img => !/alt=["'][^"']*["']/i.test(img)).length;
     const hasSchema = html.includes('schema.org') || html.includes('application/ld+json');
+    const hasViewport = /<meta[^>]*name=["']viewport["']/i.test(html);
+    const hasCanonical = /<link[^>]*rel=["']canonical["']/i.test(html);
+    const hasOpenGraph = /<meta[^>]*property=["']og:/i.test(html);
 
-    let score = 45;
-    score += title.length > 10 && title.length < 60 ? 20 : 0;
-    score += metaDesc.length > 50 && metaDesc.length < 160 ? 15 : 0;
-    score += h1 === 1 ? 10 : 0;
-    score += missingAlt === 0 ? 5 : 0;
-    score += hasSchema ? 5 : 0;
-    score = Math.min(100, Math.max(30, score));
+    // --- Scoring ---
+    let score = 30;
+    if (title.length >= 10 && title.length <= 60) score += 15;
+    else if (title.length > 0) score += 7;
+    if (metaDesc.length >= 50 && metaDesc.length <= 160) score += 12;
+    else if (metaDesc.length > 0) score += 5;
+    if (h1Count === 1) score += 12;
+    if (missingAlt === 0 && images.length > 0) score += 8;
+    else if (images.length === 0) score += 8;
+    if (hasSchema) score += 6;
+    if (hasViewport) score += 7;
+    if (hasCanonical) score += 5;
+    if (hasOpenGraph) score += 5;
+    score = Math.min(100, Math.max(10, score));
 
-    const issues = [
-      { type: title ? (title.length < 60 ? 'good' : 'warning') : 'critical', message: `Title: ${title || 'Missing'}`, fix: !title ? 'Add unique <title> tag (50-60 chars)' : title.length > 60 ? 'Shorten title' : '' },
-      { type: metaDesc ? 'good' : 'warning', message: `Meta Description: ${metaDesc ? 'Present' : 'Missing'}`, fix: !metaDesc ? 'Add 150-160 character meta description' : '' },
-      { type: h1 === 1 ? 'good' : 'critical', message: `${h1} H1 tag(s)`, fix: h1 !== 1 ? 'Use exactly one H1 tag' : '' },
-      { type: missingAlt === 0 ? 'good' : 'warning', message: `${missingAlt} images missing alt text`, fix: missingAlt > 0 ? 'Add descriptive alt attributes to images' : '' },
-      { type: hasSchema ? 'good' : 'warning', message: hasSchema ? 'Schema.org markup detected' : 'No Schema.org markup found', fix: !hasSchema ? 'Add JSON-LD structured data' : '' },
+    // --- Issues ---
+    const issues: SeoIssue[] = [
+      {
+        type: !title ? 'critical' : title.length > 60 ? 'warning' : title.length < 10 ? 'warning' : 'good',
+        message: title ? `Title tag: "${title.slice(0, 60)}${title.length > 60 ? '…' : ''}" (${title.length} chars)` : 'Title tag: Missing',
+        fix: !title ? 'Add a unique <title> tag between 50–60 characters.' : title.length > 60 ? 'Shorten title to under 60 characters.' : title.length < 10 ? 'Title is too short — aim for 50–60 characters.' : '',
+      },
+      {
+        type: !metaDesc ? 'warning' : metaDesc.length > 160 ? 'warning' : metaDesc.length < 50 ? 'warning' : 'good',
+        message: metaDesc ? `Meta description: ${metaDesc.length} chars` : 'Meta description: Missing',
+        fix: !metaDesc ? 'Add a meta description of 150–160 characters.' : metaDesc.length > 160 ? 'Shorten meta description to under 160 characters.' : metaDesc.length < 50 ? 'Meta description is too short — aim for 150–160 characters.' : '',
+      },
+      {
+        type: h1Count === 1 ? 'good' : h1Count === 0 ? 'critical' : 'warning',
+        message: `H1 tags: ${h1Count} found`,
+        fix: h1Count === 0 ? 'Add exactly one H1 tag as the main page heading.' : h1Count > 1 ? `Remove ${h1Count - 1} extra H1 tag(s) — pages should have exactly one.` : '',
+      },
+      {
+        type: missingAlt === 0 ? 'good' : missingAlt > 3 ? 'critical' : 'warning',
+        message: images.length === 0 ? 'No images found on page' : `Images: ${images.length} total, ${missingAlt} missing alt text`,
+        fix: missingAlt > 0 ? `Add descriptive alt attributes to ${missingAlt} image(s).` : '',
+      },
+      {
+        type: hasViewport ? 'good' : 'critical',
+        message: hasViewport ? 'Viewport meta tag present (mobile-friendly)' : 'Viewport meta tag missing',
+        fix: !hasViewport ? 'Add <meta name="viewport" content="width=device-width, initial-scale=1"> for mobile compatibility.' : '',
+      },
+      {
+        type: hasSchema ? 'good' : 'warning',
+        message: hasSchema ? 'Structured data (Schema.org) detected' : 'No structured data found',
+        fix: !hasSchema ? 'Add JSON-LD structured data to help search engines understand your content.' : '',
+      },
+      {
+        type: hasCanonical ? 'good' : 'warning',
+        message: hasCanonical ? 'Canonical URL tag present' : 'No canonical URL tag',
+        fix: !hasCanonical ? 'Add <link rel="canonical"> to prevent duplicate content issues.' : '',
+      },
+      {
+        type: hasOpenGraph ? 'good' : 'warning',
+        message: hasOpenGraph ? 'Open Graph tags present (social sharing ready)' : 'No Open Graph tags found',
+        fix: !hasOpenGraph ? 'Add og:title, og:description, og:image for better social media previews.' : '',
+      },
     ];
 
-    return Response.json({
-      url,
-      title: title || 'No Title',
+    const result: SeoResult = {
+      url: parsedUrl.toString(),
+      title: title || 'No Title Found',
       score: Math.round(score),
       metaDesc,
-      h1Count: h1,
+      h1Count,
+      h2Count,
       missingAlt,
       hasSchema,
+      hasViewport,
+      hasCanonical,
+      hasOpenGraph,
       issues,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    return Response.json({ error: 'Could not access URL. Make sure it is public and not blocked.' }, { status: 400 });
+      timestamp: new Date().toISOString(),
+    };
+
+    return NextResponse.json(result);
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      return NextResponse.json({ error: 'Request timed out. The website took too long to respond.' }, { status: 400 });
+    }
+    return NextResponse.json({ error: 'Could not access the URL. Make sure it is publicly accessible and not behind a login.' }, { status: 400 });
   }
 }
