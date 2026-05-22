@@ -1,42 +1,34 @@
 # URLBoost Pro
 
-**One-stop tool**: SEO Analysis → Auto Suggestions → Free Submissions → Professional Reports
+A free SEO analyzer, submission helper, and PDF report generator. No signup required to use.
 
-![Demo](https://via.placeholder.com/800x400?text=URLBoost+Pro+Screenshot)
+## What it does
+- Analyzes 8 SEO factors: title, meta description, H1 tags, image alt text, viewport, schema.org, canonical URL, Open Graph
+- Gives a score out of 100 with actionable fixes
+- Lists verified free submission sites (search engines, directories, archives)
+- Exports a professional PDF report
 
-## ✨ Features
-- Advanced on-page SEO analysis with scores
-- Actionable improvement suggestions
-- Craigslist posting helper (city selector)
-- Batch open 10+ free directories & search engines
-- Beautiful PDF report export
-- Dark/Light mode
-- No signup / No database required
-
-## Quick Start (Chromebook Friendly)
-See instructions below.
-
-
-# URLBoost Pro
-
-A powerful, free SEO analysis + submission tool. Analyze any website, get improvement suggestions, submit to major search engines & free directories (no signup needed for many), and generate professional reports.
-
-## Features
-
-- **Advanced SEO Analysis** (Title, Meta, Headings, Images, Schema)
-- **Actionable Fix Suggestions**
-- **Craigslist Posting Helper** with city selector
-- **One-click batch submission** to Google, Bing, Archive.org, Viesearch, etc.
-- **PDF Report Generation**
-- **Fully responsive modern UI**
-
-## Quick Start
+## Quick Start (local)
 
 ```bash
-# 1. Clone or download the zip
-# 2. Install dependencies
 npm install
+npm run dev
+# Open http://localhost:3000
+```
 
-# 3. Run development server
-npm run development
+## Deploy for Free (Recommended: Vercel)
 
+1. Push this folder to a GitHub repo
+2. Go to https://vercel.com → "Add New Project"
+3. Import your GitHub repo
+4. Click Deploy — done! You get a live URL instantly.
+
+Vercel free tier is more than enough for this app.
+
+## Other free hosting options
+- **Netlify** — https://netlify.com (drag & drop the folder or connect GitHub)
+- **Railway** — https://railway.app (run `npm start` after deploy)
+- **Render** — https://render.com (Web Service, free tier)
+
+## Tech stack
+- Next.js 15, React 19, TypeScript, Tailwind CSS, jsPDF
