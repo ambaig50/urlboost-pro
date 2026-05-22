@@ -2,10 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  font-family: 'Inter', system-ui, sans-serif;
+html {
+  color-scheme: dark;
 }
 
-.theme-toggle {
-  transition: all 0.3s ease;
+body {
+  background-color: #020617;
 }
